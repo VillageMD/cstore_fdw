@@ -1455,6 +1455,7 @@ ColumnList(RelOptInfo *baserel, Oid foreignTableId)
 #else
 	List *targetColumnList = baserel->reltargetlist;
 #endif
+	ListCell *targetColumnCell = NULL;
 	List *restrictInfoList = baserel->baserestrictinfo;
 	ListCell *restrictInfoCell = NULL;
 	const AttrNumber wholeRow = 0;
@@ -1463,7 +1464,23 @@ ColumnList(RelOptInfo *baserel, Oid foreignTableId)
 	Form_pg_attribute *attributeFormArray = tupleDescriptor->attrs;
 
 	/* first add the columns used in joins and projections */
-	neededColumnList = list_copy(targetColumnList);
+	foreach(targetColumnCell, targetColumnList)
+	{
+		List *targetVarList = NIL;
+		Node *targetExpr = (Node *) lfirst(targetColumnCell);
+
+#if PG_VERSION_NUM >= 90600
+		targetVarList = pull_var_clause(targetExpr,
+										PVC_RECURSE_AGGREGATES |
+										PVC_RECURSE_PLACEHOLDERS);
+#else
+		targetVarList = pull_var_clause(targetExpr,
+										PVC_RECURSE_AGGREGATES,
+										PVC_RECURSE_PLACEHOLDERS);
+#endif
+
+		neededColumnList = list_union(neededColumnList, targetVarList);
+	}
 
 	/* then walk over all restriction clauses, and pull up any used columns */
 	foreach(restrictInfoCell, restrictInfoList)
